@@ -1,57 +1,56 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-
-// Define como é um usuário
-interface User {
-    name: string;
-    email: string;
-}
+import { supabase } from '@/lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
-    user: User | null;
-    login: (name: string, email: string) => void;
-    logout: () => void;
-    isLoading: boolean;
+  user: User | null;
+  signOut: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const [user, setUser] = useState<User | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-    // Ao carregar a página, verifica se já tem alguém salvo no navegador
-    useEffect(() => {
-        const savedUser = localStorage.getItem('rio_verde_user');
-        if (savedUser) {
-            setUser(JSON.parse(savedUser));
-        }
-        setIsLoading(false);
-    }, []);
-
-    const login = (name: string, email: string) => {
-        const newUser = { name, email };
-        setUser(newUser);
-        localStorage.setItem('rio_verde_user', JSON.stringify(newUser));
+  useEffect(() => {
+    // 1. Verifica se já existe uma sessão ativa ao carregar
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
+      setIsLoading(false);
     };
 
-    const logout = () => {
-        setUser(null);
-        localStorage.removeItem('rio_verde_user');
-    };
+    checkUser();
 
-    return (
-        <AuthContext.Provider value={{ user, login, logout, isLoading }}>
-            {children}
-        </AuthContext.Provider>
-    );
+    // 2. Ouve mudanças (login, logout, token expirado) em tempo real
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, signOut, isLoading }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error('useAuth deve ser usado dentro de um AuthProvider');
-    }
-    return context;
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+  }
+  return context;
 }

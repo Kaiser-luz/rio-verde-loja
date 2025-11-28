@@ -1,0 +1,55 @@
+// Conexão com o Banco
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- TABELA: CATEGORIAS ---
+model Category {
+  id        String   @id
+  name      String
+  type      String
+  createdAt DateTime @default(now())
+}
+
+// --- TABELA: PRODUTOS ---
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  category    String   // Guarda o ID da categoria (ex: 'linho')
+  price       Decimal  @db.Decimal(10, 2)
+  stock       Decimal  @db.Decimal(10, 2)
+  type        String   
+  image       String
+  colors      Json     
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+// ... (mantenha o código anterior das tabelas Product e Category igual)
+
+// --- NOVO: TABELA DE PEDIDOS ---
+model Order {
+  id          String      @id @default(uuid()) // ID único (ex: 'a1b2-c3d4...')
+  customer    String?     // Nome do cliente (se tiver logado)
+  total       Decimal     @db.Decimal(10, 2)
+  status      String      @default("pendente") // pendente, pago, entregue
+  items       OrderItem[] // Relação com os itens
+  createdAt   DateTime    @default(now())
+}
+
+// --- NOVO: ITENS DO PEDIDO ---
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  
+  // Guardamos os dados fixos para histórico (se o produto mudar preço depois, aqui não muda)
+  productName String
+  quantity    Decimal @db.Decimal(10, 2)
+  price       Decimal @db.Decimal(10, 2)
+  color       String
+}

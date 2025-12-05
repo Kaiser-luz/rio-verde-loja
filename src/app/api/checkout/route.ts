@@ -2,19 +2,25 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
-    console.log("🔄 Iniciando checkout no servidor...");
+    console.log("🔄 Iniciando checkout...");
 
     try {
         // -------------------------------------------------------------------------
-        // TOKEN (Mantenha o que está funcionando)
+        // TOKEN SEGURO (Lê do arquivo .env ou da Vercel)
         // -------------------------------------------------------------------------
-        const token = "e75d9de4-0fcd-4e99-8f65-c05627c6026c1c23e08f479cb85e966adb6112557ab11fb6-538e-4661-b0f6-ae5e5afcebb7";
+        // Removemos o token hardcoded para segurança no Git
+        const token = process.env.PAGSEGURO_TOKEN;
+
+        if (!token) {
+            console.error("❌ ERRO CRÍTICO: PAGSEGURO_TOKEN não encontrado nas variáveis de ambiente.");
+            return NextResponse.json({ error: "Servidor não configurado para pagamentos." }, { status: 500 });
+        }
         // -------------------------------------------------------------------------
 
         const body = await request.json();
         const { orderId } = body;
 
-        // ... Validações ...
+        // Validações
         if (!orderId) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
         const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
         if (!order) return NextResponse.json({ error: "Pedido não encontrado" }, { status: 404 });
@@ -26,41 +32,43 @@ export async function POST(request: Request) {
             unit_amount: Math.round(Number(item.price) * 100),
         }));
 
-        // Configurações de ambiente
+        // Detecção de Ambiente (Produção vs Localhost)
         const origin = request.headers.get('origin') || "http://localhost:3000";
-        const isProduction = origin.startsWith("https://"); // Só envia redirect se for HTTPS
+        // O PagSeguro só aceita Webhooks se o site tiver HTTPS (estiver na internet)
+        const isProduction = origin.startsWith("https://");
 
-        // Data de expiração (Obrigatório para Checkout Pro)
-        const expirationDate = new Date();
-        expirationDate.setDate(expirationDate.getDate() + 1); // +1 dia
+        // Email único para evitar erro de duplicidade no Sandbox
+        const randomEmail = `cliente_${Date.now()}@sandbox.pagseguro.com.br`;
 
+        // Montagem do Payload Dinâmico
         const payload: any = {
             reference_id: order.id,
-            expiration_date: expirationDate.toISOString(),
             customer: {
                 name: "Cliente Teste Sandbox",
-                email: "comprador@sandbox.pagseguro.com.br",
-                tax_id: "12345678909",
+                email: randomEmail,
+                tax_id: "12345678909", // CPF válido para Sandbox
                 phones: [{ country: "55", area: "11", number: "999999999", type: "MOBILE" }]
             },
             items: items,
-            // CORREÇÃO: Removemos redirect_url se for localhost para evitar erro 40002
-            // O PagSeguro bloqueia http://localhost no endpoint /checkouts
+            // O redirect_url geralmente aceita localhost no Sandbox, mas é bom garantir
+            redirect_url: `${origin}/sucesso`
         };
 
+        // CORREÇÃO DO ERRO 40002:
+        // Só adicionamos o campo notification_urls se estivermos em Produção (HTTPS).
+        // Se for localhost, NÃO enviamos esse campo (nem vazio, nem com localhost).
         if (isProduction) {
-            payload.redirect_url = `${origin}/sucesso`;
+            payload.notification_urls = [`${origin}/api/webhook/pagseguro`];
         }
 
-        console.log("📦 Criando Checkout Pro...");
+        console.log(`📦 Enviando para PagSeguro (Notificações ativas: ${isProduction})...`);
 
-        // MUDANÇA CRÍTICA: Endpoint mudou de /orders para /checkouts
-        const response = await fetch('https://sandbox.api.pagseguro.com/checkouts', {
+        const response = await fetch('https://sandbox.api.pagseguro.com/orders', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`,
-                'x-api-version': '4.0' // Mantemos a versão 4
+                'x-api-version': '4.0'
             },
             body: JSON.stringify(payload)
         });
@@ -69,20 +77,25 @@ export async function POST(request: Request) {
 
         if (!response.ok) {
             console.error("❌ ERRO PAGSEGURO:", JSON.stringify(data, null, 2));
-            const errorMsg = data.error_messages?.[0]?.description || data.message || "Erro desconhecido";
-            return NextResponse.json({ error: `PagSeguro: ${errorMsg}` }, { status: 500 });
+            // Tratamento de erro amigável
+            const errorItem = data.error_messages?.[0];
+            const errorMsg = errorItem
+                ? `${errorItem.code}: ${errorItem.description} (${errorItem.parameter_name || ''})`
+                : "Erro desconhecido no PagSeguro";
+
+            return NextResponse.json({ error: errorMsg }, { status: 500 });
         }
 
-        console.log("✅ Checkout criado!");
+        console.log("✅ Pedido criado com sucesso!");
 
-        // No endpoint /checkouts, o link vem direto em 'links' com rel='PAY' e method='GET'
+        // Busca o Link de Pagamento (PAY)
         const paymentLink = data.links.find((link: any) => link.rel === 'PAY')?.href;
 
         if (paymentLink) {
             return NextResponse.json({ url: paymentLink });
         }
 
-        return NextResponse.json({ error: "Link de redirecionamento não encontrado." }, { status: 500 });
+        return NextResponse.json({ error: "O PagSeguro não retornou o link de pagamento." }, { status: 500 });
 
     } catch (error: any) {
         console.error("❌ ERRO INTERNO:", error);

@@ -1,26 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // Ignora o ESLint (estilo de código)
-    eslint: {
-        ignoreDuringBuilds: true,
-    },
-    // Ignora o TypeScript (tipagem rigorosa) no build
-    typescript: {
-        ignoreBuildErrors: true,
-    },
-    // Permite imagens externas
+    eslint: { ignoreDuringBuilds: true },
+    typescript: { ignoreBuildErrors: true },
     images: {
         remotePatterns: [
-            {
-                protocol: 'https',
-                hostname: 'images.unsplash.com',
-            },
-            {
-                protocol: 'https',
-                hostname: 'picsum.photos',
-            },
+            { protocol: 'https', hostname: 'images.unsplash.com' },
+            { protocol: 'https', hostname: 'picsum.photos' },
+            { protocol: 'https', hostname: '*.supabase.co' }, // Permite imagens do Supabase
         ],
     },
 };
-
 export default nextConfig;

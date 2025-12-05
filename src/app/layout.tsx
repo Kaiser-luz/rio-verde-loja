@@ -4,8 +4,8 @@ import './globals.css';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import CartSidebar from '@/components/CartSidebar';
-import { CartProvider } from '@/context/CartContext';
-import { AuthProvider } from '@/context/AuthContext';
+import { CartProvider } from '@/context/CartContext'; // Essencial para o erro sumir
+import { AuthProvider } from '@/context/AuthContext'; // Essencial para o login
 import { MessageCircle } from 'lucide-react';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} ${playfair.variable} font-sans text-stone-900 bg-white`}>
-        {/* ORDEM IMPORTANTE: AuthProvider > CartProvider > Resto do Site */}
+        {/* AQUI ESTÁ O SEGREDO: O CartProvider tem de estar à volta de tudo */}
         <AuthProvider>
           <CartProvider>
             <Header />

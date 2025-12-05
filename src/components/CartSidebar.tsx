@@ -1,54 +1,78 @@
 'use client';
 
 import { useState } from 'react';
-import { X, ShoppingBag, Loader2 } from 'lucide-react';
+import { X, ShoppingBag, Loader2, CreditCard, ExternalLink } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
-import { createOrder } from '@/app/actions'; // Importa a ação que criamos
+import { createOrder } from '@/app/actions';
+import { useRouter } from 'next/navigation';
 
 export default function CartSidebar() {
     const { isCartOpen, toggleCart, cart, removeFromCart, cartTotal } = useCart();
     const { user } = useAuth();
     const [isProcessing, setIsProcessing] = useState(false);
+    const [paymentLink, setPaymentLink] = useState<string | null>(null);
+    const router = useRouter();
 
-    // Número do WhatsApp da loja (apenas números, com código do país)
-    const PHONE_NUMBER = "5541988494471";
+    const getCustomerName = () => {
+        if (!user) return "Visitante";
+        const u = user as any;
+        return u.user_metadata?.full_name || u.name || u.email || "Cliente";
+    };
 
     const handleCheckout = async () => {
+        if (isProcessing) return;
         setIsProcessing(true);
+        setPaymentLink(null);
 
         try {
-            // 1. Salva o pedido no Banco de Dados (Supabase)
-            const orderId = await createOrder(cart, cartTotal, user?.name || "");
+            console.log("🛒 Passo 1: Salvando pedido...");
 
-            // 2. Monta a mensagem do WhatsApp
-            let message = `*Olá! Gostaria de finalizar meu pedido na Rio Verde.*\n`;
-            message += `-----------------------------------\n`;
-            message += `*Pedido #:* ${orderId.slice(0, 8)}\n`; // Pega só os 8 primeiros dígitos do ID
-            message += `*Cliente:* ${user?.name || "Visitante"}\n`;
-            message += `-----------------------------------\n\n`;
+            // CORREÇÃO CRÍTICA: Pegamos o ID do usuário se ele estiver logado
+            const userId = user ? user.id : undefined;
 
-            cart.forEach(item => {
-                message += `• ${item.quantity}${item.type === 'meter' ? 'm' : 'un'} de *${item.name}*\n`;
-                message += `  Cor: ${item.selectedColor.name} | R$ ${(item.price * item.quantity).toFixed(2)}\n\n`;
+            // Passamos o userId como 4º argumento para vincular o pedido à conta
+            const orderId = await createOrder(cart, cartTotal, getCustomerName(), userId);
+
+            if (!orderId) throw new Error("Não foi possível salvar o pedido no sistema.");
+
+            console.log("💳 Passo 2: Gerando pagamento...");
+            const response = await fetch('/api/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId }),
             });
 
-            message += `-----------------------------------\n`;
-            message += `*Total: R$ ${cartTotal.toFixed(2)}*\n`;
-            message += `-----------------------------------\n`;
-            message += `Aguardo confirmação de disponibilidade e frete.`;
+            const text = await response.text();
+            let data;
 
-            // 3. Redireciona para o WhatsApp
-            const whatsappUrl = `https://wa.me/${PHONE_NUMBER}?text=${encodeURIComponent(message)}`;
-            window.open(whatsappUrl, '_blank');
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error("Resposta não-JSON:", text);
+                throw new Error("Erro técnico no servidor de pagamento.");
+            }
 
-            // 4. Limpa o carrinho (opcional, aqui vou apenas fechar)
-            toggleCart();
+            if (data.url) {
+                console.log("🚀 Redirecionando para:", data.url);
+                setPaymentLink(data.url);
+                window.location.href = data.url;
 
-        } catch (error) {
-            alert("Houve um erro ao processar o pedido. Tente novamente.");
-            console.error(error);
-        } finally {
+            } else if (data.success && data.type === 'pix') {
+                const params = new URLSearchParams({
+                    pix_code: data.pix_code,
+                    pix_image: data.pix_image
+                });
+                toggleCart();
+                router.push(`/sucesso?${params.toString()}`);
+
+            } else {
+                throw new Error(data.error || "Pagamento não autorizado pelo sistema.");
+            }
+
+        } catch (error: any) {
+            console.error("Erro no checkout:", error);
+            alert(error.message);
             setIsProcessing(false);
         }
     };
@@ -61,66 +85,57 @@ export default function CartSidebar() {
 
             <div className="relative bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
                 <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
-                    <h2 className="text-xl font-serif font-medium">Seu Carrinho ({cart.length})</h2>
+                    <h2 className="text-xl font-serif font-medium">Seu Carrinho</h2>
                     <button onClick={toggleCart}><X size={24} className="text-stone-400 hover:text-stone-900" /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {cart.length === 0 ? (
-                        <div className="text-center text-stone-400 mt-20">
-                            <ShoppingBag size={48} className="mx-auto mb-4 opacity-50" />
-                            <p>Seu carrinho está vazio.</p>
-                        </div>
-                    ) : (
-                        cart.map((item, idx) => (
-                            <div key={`${item.id}-${idx}`} className="flex gap-4">
-                                <img src={item.image} alt={item.name} className="w-20 h-20 rounded-lg object-cover bg-stone-100" />
-                                <div className="flex-1">
-                                    <h3 className="font-medium text-stone-900">{item.name}</h3>
-                                    <div className="text-sm text-stone-500 mb-1">
-                                        Cor: {item.selectedColor.name} | {item.quantity} {item.type === 'meter' ? 'm' : 'un'}
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-medium">R$ {(item.price * item.quantity).toFixed(2)}</span>
-                                        <button
-                                            onClick={() => removeFromCart(idx)}
-                                            className="text-xs text-red-500 hover:underline"
-                                        >
-                                            Remover
-                                        </button>
-                                    </div>
+                    {cart.map((item, idx) => (
+                        <div key={idx} className="flex gap-4 border-b border-stone-50 pb-4">
+                            <img src={item.image} className="w-16 h-16 rounded object-cover bg-stone-100" />
+                            <div className="flex-1">
+                                <p className="font-medium text-sm">{item.name}</p>
+                                <p className="text-xs text-stone-500">{item.quantity} {item.type === 'meter' ? 'm' : 'un'} • {item.selectedColor.name}</p>
+                                <div className="flex justify-between mt-1">
+                                    <span className="font-bold text-sm">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                                    <button onClick={() => removeFromCart(idx)} className="text-xs text-red-500">Remover</button>
                                 </div>
                             </div>
-                        ))
-                    )}
+                        </div>
+                    ))}
+                    {cart.length === 0 && <p className="text-center text-stone-400 mt-10">Carrinho vazio.</p>}
                 </div>
 
                 <div className="p-6 border-t border-stone-100 bg-stone-50">
                     <div className="flex justify-between items-center mb-4">
-                        <span className="text-stone-500">Subtotal</span>
+                        <span className="text-stone-500">Total</span>
                         <span className="text-xl font-bold text-stone-900">R$ {cartTotal.toFixed(2)}</span>
                     </div>
 
-                    <button
-                        onClick={handleCheckout}
-                        disabled={cart.length === 0 || isProcessing}
-                        className="w-full bg-green-800 text-white py-3 rounded-lg font-medium hover:bg-green-900 disabled:bg-stone-300 transition-colors flex items-center justify-center gap-2"
-                    >
-                        {isProcessing ? (
-                            <> <Loader2 size={20} className="animate-spin" /> Processando... </>
-                        ) : (
-                            <> <MessageCircle size={20} /> Finalizar no WhatsApp </>
-                        )}
-                    </button>
+                    {paymentLink ? (
+                        <a
+                            href={paymentLink}
+                            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-lg animate-pulse"
+                        >
+                            <ExternalLink size={20} /> Clique aqui para Pagar
+                        </a>
+                    ) : (
+                        <button
+                            onClick={handleCheckout}
+                            disabled={cart.length === 0 || isProcessing}
+                            className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 disabled:bg-stone-300 transition-colors flex items-center justify-center gap-2 shadow-lg active:scale-95"
+                        >
+                            {isProcessing ? (
+                                <> <Loader2 size={20} className="animate-spin" /> Gerando Pagamento... </>
+                            ) : (
+                                <> <CreditCard size={20} /> Ir para Pagamento </>
+                            )}
+                        </button>
+                    )}
 
-                    <p className="text-xs text-center text-stone-400 mt-3">
-                        Você será redirecionado para o WhatsApp da loja para confirmar o pagamento e entrega.
-                    </p>
+                    <p className="text-xs text-center text-stone-400 mt-2">Ambiente Seguro PagBank</p>
                 </div>
             </div>
         </div>
     );
 }
-
-// Pequeno helper para o ícone do WhatsApp
-import { MessageCircle } from 'lucide-react';

@@ -3,17 +3,20 @@ import ProductCard from '@/components/ProductCard';
 import { prisma } from '@/lib/prisma';
 import { Product, MeasurementType } from '@/lib/types';
 
-// Busca Categorias e Produtos do Banco
+export const dynamic = 'force-dynamic';
+
 async function getData() {
   const categories = await prisma.category.findMany({ orderBy: { name: 'asc' } });
   const productsRaw = await prisma.product.findMany();
 
-  // Converte os dados do banco para o formato do site
+  // CONVERSÃO IMPORTANTE: Decimal -> Number
   const products = productsRaw.map(p => ({
     id: p.id,
     name: p.name,
     category: p.category,
     price: Number(p.price),
+    // Se existir preço de estofador, converte. Senão, fica null.
+    priceUpholsterer: p.priceUpholsterer ? Number(p.priceUpholsterer) : null,
     stock: Number(p.stock),
     type: p.type as MeasurementType,
     image: p.image,
@@ -32,7 +35,6 @@ export default async function Home() {
 
       {categories.map(cat => {
         const catProducts = products.filter(p => p.category === cat.id);
-        // Só mostra a seção se tiver produtos nela
         if (catProducts.length === 0) return null;
 
         return (

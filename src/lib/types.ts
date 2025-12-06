@@ -3,7 +3,7 @@ export type MeasurementType = 'meter' | 'unit';
 export interface ProductColor {
     name: string;
     hex: string;
-    image?: string; // Novo: Foto opcional da cor
+    image?: string;
 }
 
 export interface Product {
@@ -11,11 +11,13 @@ export interface Product {
     name: string;
     category: string;
     price: number;
-    priceUpholsterer?: number | null; // Novo: Preço especial
+    priceUpholsterer?: number | null;
     stock: number;
     type: MeasurementType;
     image: string;
     colors: ProductColor[];
+    // Campo opcional para o PDF
+    pdfUrl?: string | null;
 }
 
 export interface CartItem extends Product {

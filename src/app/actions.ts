@@ -3,12 +3,27 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
-// --- USUÁRIOS ---
+// --- USUÁRIOS (COM ENDEREÇO) ---
 
-export async function createProfile(data: { userId: string, name: string, email: string, cpf: string, phone: string, role: string, cnpj?: string }) {
-    // Regra de Negócio:
-    // Se for 'customer' (cliente normal), já nasce Aprovado (true).
-    // Se for 'upholsterer' (estofador), nasce Pendente (false) e precisa de aprovação.
+interface CreateProfileData {
+    userId: string;
+    name: string;
+    email: string;
+    cpf: string;
+    phone: string;
+    role: string;
+    cnpj?: string;
+    // Endereço
+    zipCode?: string;
+    street?: string;
+    number?: string;
+    complement?: string;
+    district?: string;
+    city?: string;
+    state?: string;
+}
+
+export async function createProfile(data: CreateProfileData) {
     const isApproved = data.role === 'customer';
 
     await prisma.profile.create({
@@ -19,8 +34,15 @@ export async function createProfile(data: { userId: string, name: string, email:
             cpf: data.cpf,
             phone: data.phone,
             role: data.role,
-            cnpj: data.cnpj, // Salva o CNPJ se tiver
-            approved: isApproved
+            cnpj: data.cnpj,
+            approved: isApproved,
+            zipCode: data.zipCode,
+            street: data.street,
+            number: data.number,
+            complement: data.complement,
+            district: data.district,
+            city: data.city,
+            state: data.state
         }
     });
 }
@@ -31,49 +53,47 @@ export async function getProfileByUserId(userId: string) {
     });
 }
 
-// --- ADMINISTRAÇÃO DE USUÁRIOS (NOVO) ---
+// --- PEDIDOS (COM FRETE E LOGÍSTICA) ---
 
-// Busca usuários que estão esperando aprovação
-export async function getPendingUsers() {
-    return await prisma.profile.findMany({
-        where: {
-            role: 'upholsterer',
-            approved: false
-        },
-        orderBy: { createdAt: 'desc' }
-    });
-}
+export async function createOrder(
+    cartItems: any[], 
+    itemsTotal: number, 
+    customerName: string, 
+    userId?: string,
+    // Novos parâmetros de entrega
+    shippingCost: number = 0,
+    deliveryMethod: string = 'retirada_loja'
+) {
+    let shippingData = {};
 
-// Aprova um estofador
-export async function approveUser(formData: FormData) {
-    const userId = formData.get('userId') as string;
-    await prisma.profile.update({
-        where: { userId },
-        data: { approved: true }
-    });
-    revalidatePath('/admin');
-}
+    // Busca endereço do usuário para gravar no pedido
+    if (userId) {
+        const profile = await prisma.profile.findUnique({ where: { userId } });
+        if (profile) {
+            shippingData = {
+                shippingZipCode: profile.zipCode,
+                shippingStreet: profile.street,
+                shippingNumber: profile.number,
+                shippingComplement: profile.complement,
+                shippingDistrict: profile.district,
+                shippingCity: profile.city,
+                shippingState: profile.state,
+            };
+        }
+    }
 
-// Rejeita/Deleta um cadastro (opcional)
-export async function rejectUser(formData: FormData) {
-    const userId = formData.get('userId') as string;
-    // Aqui poderíamos deletar o profile ou marcar como rejeitado. 
-    // Vamos deletar para ele poder tentar de novo.
-    await prisma.profile.delete({
-        where: { userId }
-    });
-    revalidatePath('/admin');
-}
+    // Calcula total final (Produtos + Frete)
+    const finalTotal = itemsTotal + shippingCost;
 
-// --- PEDIDOS ---
-
-export async function createOrder(cartItems: any[], total: number, customerName: string, userId?: string) {
     const order = await prisma.order.create({
         data: {
             customer: customerName || "Visitante",
             userId: userId || null,
-            total: total,
+            total: finalTotal,
             status: "pendente",
+            shippingCost: shippingCost,
+            deliveryMethod: deliveryMethod,
+            ...shippingData, // Grava o endereço
             items: {
                 create: cartItems.map(item => ({
                     productName: item.name,
@@ -90,13 +110,11 @@ export async function createOrder(cartItems: any[], total: number, customerName:
 
 export async function getUserOrders(userId: string) {
     if (!userId) return [];
-
     const orders = await prisma.order.findMany({
         where: { userId: userId },
         orderBy: { createdAt: 'desc' },
         include: { items: true }
     });
-
     return orders.map(order => ({
         ...order,
         total: Number(order.total),
@@ -111,37 +129,29 @@ export async function getUserOrders(userId: string) {
 export async function updateOrderStatus(formData: FormData) {
     const id = formData.get('id') as string;
     const status = formData.get('status') as string;
-
     if (!id || !status) return;
-
-    await prisma.order.update({
-        where: { id },
-        data: { status }
-    });
-
+    await prisma.order.update({ where: { id }, data: { status } });
     revalidatePath('/admin');
 }
 
-// --- PRODUTOS ---
+// --- PRODUTOS (COM PDF) ---
 
 export async function createProduct(formData: FormData) {
     const name = formData.get('name') as string;
     const price = parseFloat(formData.get('price') as string);
-
     const priceUpholstererRaw = formData.get('priceUpholsterer') as string;
     const priceUpholsterer = priceUpholstererRaw ? parseFloat(priceUpholstererRaw) : price;
-
     const stock = parseFloat(formData.get('stock') as string);
     const categoryId = formData.get('category') as string;
     const image = formData.get('image') as string;
+    
+    // Pega a URL do PDF
+    const pdfUrl = formData.get('pdfUrl') as string;
 
     const colorsRaw = formData.get('colorsJson') as string;
     const colors = colorsRaw ? JSON.parse(colorsRaw) : [];
 
-    const category = await prisma.category.findUnique({
-        where: { id: categoryId }
-    });
-
+    const category = await prisma.category.findUnique({ where: { id: categoryId } });
     if (!category) throw new Error("Categoria não encontrada");
 
     await prisma.product.create({
@@ -153,7 +163,8 @@ export async function createProduct(formData: FormData) {
             category: categoryId,
             type: category.type,
             image,
-            colors
+            colors,
+            pdfUrl: pdfUrl || null // Salva no banco
         },
     });
 
@@ -168,34 +179,33 @@ export async function deleteProduct(formData: FormData) {
     revalidatePath('/admin');
 }
 
-// --- CATEGORIAS ---
-
 export async function createCategory(formData: FormData) {
     const name = formData.get('name') as string;
     const id = name.toLowerCase().trim().replace(/ /g, '-').normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const type = formData.get('type') as string;
-
-    try {
-        await prisma.category.create({
-            data: { id, name, type }
-        });
-    } catch (error: any) {
-        if (error.code !== 'P2002') {
-            throw error;
-        }
-    }
-
+    try { await prisma.category.create({ data: { id, name, type } }); } catch (error: any) { if (error.code !== 'P2002') throw error; }
     revalidatePath('/');
     revalidatePath('/admin');
 }
 
 export async function deleteCategory(formData: FormData) {
     const id = formData.get('id') as string;
-    try {
-        await prisma.category.delete({ where: { id } });
-    } catch (error) {
-        console.error("Erro ao deletar categoria:", error);
-    }
+    try { await prisma.category.delete({ where: { id } }); } catch (error) { console.error(error); }
     revalidatePath('/');
+    revalidatePath('/admin');
+}
+
+// Admin Users Actions
+export async function getPendingUsers() {
+    return await prisma.profile.findMany({ where: { role: 'upholsterer', approved: false }, orderBy: { createdAt: 'desc' } });
+}
+export async function approveUser(formData: FormData) {
+    const userId = formData.get('userId') as string;
+    await prisma.profile.update({ where: { userId }, data: { approved: true } });
+    revalidatePath('/admin');
+}
+export async function rejectUser(formData: FormData) {
+    const userId = formData.get('userId') as string;
+    await prisma.profile.delete({ where: { userId } });
     revalidatePath('/admin');
 }

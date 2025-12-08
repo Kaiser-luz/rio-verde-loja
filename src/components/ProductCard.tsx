@@ -8,19 +8,22 @@ import Link from 'next/link';
 
 export default function ProductCard({ product }: { product: Product }) {
     const { addToCart } = useCart();
-    const [qty, setQty] = useState(product.type === 'meter' ? 1.0 : 1);
+    // Inicializa com 0.5 se for metro
+    const [qty, setQty] = useState(product.type === 'meter' ? 0.5 : 1);
     const [selectedColor, setSelectedColor] = useState(product.colors[0]);
 
     const handleQtyChange = (val: number) => {
         let newQty = val;
         if (product.type === 'unit') {
-            newQty = Math.floor(newQty);
-            if (newQty < 1) newQty = 1;
+            newQty = Math.max(1, Math.floor(newQty));
         } else {
-            if (newQty < 0.1) newQty = 0.1;
+            // Metro: mínimo 0.5, passos de 0.5
+            newQty = Math.max(0.5, Math.round(newQty * 2) / 2);
         }
-        setQty(parseFloat(newQty.toFixed(1)));
+        setQty(newQty);
     };
+
+    const step = product.type === 'meter' ? 0.5 : 1;
 
     return (
         <div className="min-w-[280px] snap-start bg-white rounded-xl border border-stone-100 overflow-hidden group shadow-sm hover:shadow-md transition-all">
@@ -64,11 +67,11 @@ export default function ProductCard({ product }: { product: Product }) {
 
                     <div className="flex items-center gap-2">
                         <div className="flex items-center border border-stone-200 rounded-lg bg-stone-50">
-                            <button onClick={() => handleQtyChange(qty - (product.type === 'meter' ? 0.5 : 1))} className="p-2 hover:bg-stone-200 rounded-l-lg text-stone-600">
+                            <button onClick={() => handleQtyChange(qty - step)} className="p-2 hover:bg-stone-200 rounded-l-lg text-stone-600">
                                 <Minus size={14} />
                             </button>
                             <span className="w-12 text-center text-sm font-medium">{qty}</span>
-                            <button onClick={() => handleQtyChange(qty + (product.type === 'meter' ? 0.5 : 1))} className="p-2 hover:bg-stone-200 rounded-r-lg text-stone-600">
+                            <button onClick={() => handleQtyChange(qty + step)} className="p-2 hover:bg-stone-200 rounded-r-lg text-stone-600">
                                 <Plus size={14} />
                             </button>
                         </div>

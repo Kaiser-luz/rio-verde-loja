@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Menu, Search, ShoppingBag, User, X, LogOut, Loader2 } from 'lucide-react';
+import { Search, ShoppingBag, User, X, LogOut, Loader2 } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -19,17 +19,15 @@ export default function Header() {
         e.preventDefault();
         if (searchTerm.trim()) {
             setIsSearchOpen(false);
-            router.push(`/busca?q=${encodeURIComponent(searchTerm)}`);
+            // Redireciona para a página de busca com o termo na query string
+            router.push(`/busca?q=${encodeURIComponent(searchTerm.trim())}`);
         }
     };
 
-    // FUNÇÃO DE CORREÇÃO: Pega o nome de forma segura
     const getUserName = () => {
         if (!user) return '';
-        const u = user as any; // Ignora erro de tipo
-        // Tenta pegar o nome completo dos metadados, ou nome direto, ou email
+        const u = user as any;
         const fullName = u.user_metadata?.full_name || u.name || u.email || '';
-        // Retorna só o primeiro nome
         return fullName.split(' ')[0];
     };
 
@@ -37,9 +35,6 @@ export default function Header() {
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-stone-100 transition-all">
             <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <button className="p-2 hover:bg-stone-100 rounded-lg lg:hidden">
-                        <Menu size={24} />
-                    </button>
                     <Link href="/" className="cursor-pointer">
                         <h1 className="text-2xl font-serif font-bold tracking-tight text-green-900">
                             Rio Verde<span className="text-green-600">.</span>
@@ -47,28 +42,20 @@ export default function Header() {
                     </Link>
                 </div>
 
-                <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-stone-600">
-                    <Link href="/" className="hover:text-stone-900 transition-colors">Início</Link>
-                    <Link href="/#linho" className="hover:text-stone-900 transition-colors">Tecidos</Link>
-                    <Link href="/#espumas" className="hover:text-stone-900 transition-colors">Espumas</Link>
-                    <Link href="#footer" className="hover:text-stone-900 transition-colors">Contato</Link>
-                </nav>
-
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => setIsSearchOpen(!isSearchOpen)}
                         className={`p-2 rounded-full transition-colors ${isSearchOpen ? 'bg-stone-100 text-stone-900' : 'text-stone-600 hover:bg-stone-100'}`}
+                        aria-label="Abrir pesquisa"
                     >
                         {isSearchOpen ? <X size={20} /> : <Search size={20} />}
                     </button>
 
-                    {/* ÁREA DE USUÁRIO */}
                     {isLoading ? (
                         <Loader2 size={20} className="animate-spin text-stone-400" />
                     ) : user ? (
                         <div className="relative group">
                             <button className="flex items-center gap-2 pl-2 pr-1 py-1 hover:bg-green-50 rounded-full transition-colors border border-transparent hover:border-green-100">
-                                {/* CORREÇÃO AQUI: Usamos a função getUserName() em vez de user.name direto */}
                                 <span className="text-xs font-bold text-green-800 hidden sm:block">Olá, {getUserName()}</span>
                                 <div className="bg-green-100 text-green-700 p-1.5 rounded-full">
                                     <User size={18} />
@@ -102,6 +89,7 @@ export default function Header() {
                     <button
                         className="p-2 hover:bg-stone-100 rounded-full text-stone-900 relative"
                         onClick={toggleCart}
+                        aria-label="Carrinho de compras"
                     >
                         <ShoppingBag size={20} />
                         {cartCount > 0 && (

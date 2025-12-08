@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Loader2, CreditCard, ExternalLink, Truck, Store } from 'lucide-react';
+import { X, Loader2, CreditCard, ExternalLink, Truck, Store, Box, ShoppingBag } from 'lucide-react';
 import { useCart } from '@/context/CartContext';
 import { useAuth } from '@/context/AuthContext';
 import { createOrder } from '@/app/actions';
@@ -15,9 +15,10 @@ export default function CartSidebar() {
     const router = useRouter();
 
     // --- ESTADOS DE LOGÍSTICA ---
-    const [deliveryMethod, setDeliveryMethod] = useState<'retirada_loja' | 'entrega'>('retirada_loja');
+    const [deliveryMode, setDeliveryMode] = useState<'pickup' | 'shipping'>('pickup');
     const [cep, setCep] = useState('');
-    const [shippingCost, setShippingCost] = useState(0);
+    const [shippingOptions, setShippingOptions] = useState<any[]>([]);
+    const [selectedShipping, setSelectedShipping] = useState<any>(null);
     const [calculatingShipping, setCalculatingShipping] = useState(false);
 
     const getCustomerName = () => {
@@ -26,23 +27,45 @@ export default function CartSidebar() {
         return u.user_metadata?.full_name || u.name || u.email || "Cliente";
     };
 
-    // Simulação de cálculo de frete (Integrar API Melhor Envio aqui no futuro)
     const calculateShipping = async () => {
-        if (cep.length < 8) return;
+        const cleanCep = cep.replace(/\D/g, '');
+        if (cleanCep.length < 8) return;
+        
         setCalculatingShipping(true);
-        setTimeout(() => {
-            setShippingCost(25.00); // Valor fixo simulado
+        setShippingOptions([]);
+        setSelectedShipping(null);
+
+        try {
+            const response = await fetch('/api/shipping', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cep: cleanCep, items: cart })
+            });
+
+            const data = await response.json();
+            
+            if (Array.isArray(data)) {
+                setShippingOptions(data);
+                if (data.length > 0) setSelectedShipping(data[0]);
+            } else {
+                alert("Não foi possível calcular o frete para este CEP.");
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao conectar com servidor de fretes.");
+        } finally {
             setCalculatingShipping(false);
-        }, 1000);
+        }
     };
 
-    // Total Final
-    const finalTotal = deliveryMethod === 'retirada_loja' ? cartTotal : cartTotal + shippingCost;
+    const shippingCost = (deliveryMode === 'shipping' && selectedShipping) ? Number(selectedShipping.price) : 0;
+    const finalTotal = cartTotal + shippingCost;
 
     const handleCheckout = async () => {
         if (isProcessing) return;
-        if (deliveryMethod === 'entrega' && shippingCost === 0) {
-            alert("Por favor, calcule o frete antes de finalizar.");
+        
+        if (deliveryMode === 'shipping' && !selectedShipping) {
+            alert("Por favor, calcule e selecione uma opção de frete.");
             return;
         }
 
@@ -51,14 +74,17 @@ export default function CartSidebar() {
 
         try {
             const userId = user ? user.id : undefined;
-            // Cria o pedido com os dados de entrega
+            const deliveryMethodName = deliveryMode === 'pickup' 
+                ? 'Retirada na Loja' 
+                : `${selectedShipping.company} - ${selectedShipping.name} (${selectedShipping.delivery_time} dias)`;
+
             const orderId = await createOrder(
                 cart, 
                 cartTotal,
                 getCustomerName(), 
                 userId,
                 shippingCost,
-                deliveryMethod
+                deliveryMethodName
             );
 
             if (!orderId) throw new Error("Erro ao salvar pedido.");
@@ -96,58 +122,131 @@ export default function CartSidebar() {
     return (
         <div className="fixed inset-0 z-50 flex justify-end">
             <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={toggleCart}></div>
-            <div className="relative bg-white w-full max-w-md h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-stone-50">
-                    <h2 className="text-xl font-serif font-medium">Seu Carrinho</h2>
-                    <button onClick={toggleCart}><X size={24} className="text-stone-400 hover:text-stone-900" /></button>
+            
+            {/* AJUSTE AQUI: Mudamos max-w-md para sm:max-w-[400px] para ficar mais compacto */}
+            <div className="relative bg-white w-full sm:max-w-[400px] h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+                
+                {/* Header */}
+                <div className="p-5 border-b border-stone-100 flex justify-between items-center bg-stone-50 shrink-0">
+                    <h2 className="text-xl font-serif font-medium flex items-center gap-2">
+                        <ShoppingBag size={20} className="text-green-800"/> Seu Carrinho
+                    </h2>
+                    <button onClick={toggleCart} className="p-2 hover:bg-stone-200 rounded-full transition-colors"><X size={20} className="text-stone-500" /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Lista de Produtos (Com Scroll Customizado e classe custom-scrollbar) */}
+                <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
                     {cart.map((item, idx) => (
-                        <div key={idx} className="flex gap-4 border-b border-stone-50 pb-4">
-                            <img src={item.image} className="w-16 h-16 rounded object-cover bg-stone-100" />
-                            <div className="flex-1">
-                                <p className="font-medium text-sm">{item.name}</p>
-                                <p className="text-xs text-stone-500">{item.quantity} {item.type === 'meter' ? 'm' : 'un'} • {item.selectedColor.name}</p>
-                                <div className="flex justify-between mt-1"><span className="font-bold text-sm">R$ {(item.price * item.quantity).toFixed(2)}</span><button onClick={() => removeFromCart(idx)} className="text-xs text-red-500">Remover</button></div>
+                        <div key={idx} className="flex gap-4 border-b border-stone-50 pb-4 last:border-0">
+                            <div className="w-16 h-16 rounded-lg overflow-hidden border border-stone-100 shrink-0">
+                                <img src={item.image} className="w-full h-full object-cover" alt={item.name} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start mb-1">
+                                    <p className="font-medium text-sm text-stone-900 truncate pr-2">{item.name}</p>
+                                    <button onClick={() => removeFromCart(idx)} className="text-xs text-red-400 hover:text-red-600 font-medium">Remover</button>
+                                </div>
+                                <p className="text-xs text-stone-500 mb-1">Cor: <span className="font-bold text-stone-700">{item.selectedColor.name}</span></p>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs bg-stone-100 px-2 py-0.5 rounded text-stone-600">{item.quantity} {item.type === 'meter' ? 'm' : 'un'}</span>
+                                    <span className="font-bold text-sm text-green-800">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                                </div>
                             </div>
                         </div>
                     ))}
-                    {cart.length === 0 && <p className="text-center text-stone-400 mt-10">Carrinho vazio.</p>}
+                    {cart.length === 0 && (
+                        <div className="h-full flex flex-col items-center justify-center text-stone-400 space-y-4">
+                            <ShoppingBag size={48} className="opacity-20" />
+                            <p>Seu carrinho está vazio.</p>
+                        </div>
+                    )}
                 </div>
 
-                <div className="p-6 border-t border-stone-100 bg-stone-50 space-y-4">
-                    {/* OPÇÕES DE ENTREGA */}
-                    <div className="bg-white p-3 rounded-lg border border-stone-200">
-                        <p className="text-sm font-bold text-stone-700 mb-2">Entrega</p>
-                        <label className="flex items-center gap-3 p-2 rounded hover:bg-stone-50 cursor-pointer">
-                            <input type="radio" name="delivery" checked={deliveryMethod === 'retirada_loja'} onChange={() => setDeliveryMethod('retirada_loja')} className="accent-green-800" />
-                            <div className="flex-1"><div className="flex items-center gap-2 font-medium text-sm text-stone-800"><Store size={16} /> Retirada na Loja</div><p className="text-xs text-stone-500">Grátis</p></div>
-                        </label>
-                        <label className="flex items-center gap-3 p-2 rounded hover:bg-stone-50 cursor-pointer">
-                            <input type="radio" name="delivery" checked={deliveryMethod === 'entrega'} onChange={() => setDeliveryMethod('entrega')} className="accent-green-800" />
-                            <div className="flex-1"><div className="flex items-center gap-2 font-medium text-sm text-stone-800"><Truck size={16} /> Entrega</div><p className="text-xs text-stone-500">Correios / Motoboy</p></div>
-                        </label>
+                {/* Footer (Fixo embaixo) */}
+                <div className="p-5 border-t border-stone-100 bg-stone-50 space-y-4 shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                    
+                    {/* OPÇÕES DE ENTREGA (Scroll interno se tiver muitas opções) */}
+                    <div className="bg-white p-3 rounded-xl border border-stone-200">
+                        <div className="flex gap-2 mb-3">
+                            <label className={`flex-1 flex flex-col items-center gap-1 p-2 rounded-lg border cursor-pointer transition-all text-center ${deliveryMode === 'pickup' ? 'border-green-600 bg-green-50 text-green-900' : 'border-stone-100 hover:bg-stone-50 text-stone-600'}`}>
+                                <input type="radio" name="delivery" checked={deliveryMode === 'pickup'} onChange={() => setDeliveryMode('pickup')} className="hidden" />
+                                <Store size={18} />
+                                <span className="text-[10px] font-bold uppercase">Retirada</span>
+                            </label>
+                            <label className={`flex-1 flex flex-col items-center gap-1 p-2 rounded-lg border cursor-pointer transition-all text-center ${deliveryMode === 'shipping' ? 'border-green-600 bg-green-50 text-green-900' : 'border-stone-100 hover:bg-stone-50 text-stone-600'}`}>
+                                <input type="radio" name="delivery" checked={deliveryMode === 'shipping'} onChange={() => setDeliveryMode('shipping')} className="hidden" />
+                                <Truck size={18} />
+                                <span className="text-[10px] font-bold uppercase">Entrega</span>
+                            </label>
+                        </div>
 
-                        {deliveryMethod === 'entrega' && (
-                            <div className="mt-3 pl-7 animate-in fade-in">
-                                <div className="flex gap-2">
-                                    <input type="text" placeholder="CEP" value={cep} onChange={(e) => setCep(e.target.value)} className="w-full p-2 border rounded text-sm" maxLength={9} />
-                                    <button onClick={calculateShipping} disabled={calculatingShipping} className="bg-stone-800 text-white px-3 py-2 rounded text-xs font-bold">{calculatingShipping ? <Loader2 size={14} className="animate-spin" /> : "OK"}</button>
+                        {deliveryMode === 'shipping' && (
+                            <div className="animate-in fade-in slide-in-from-top-2">
+                                <div className="flex gap-2 mb-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder="CEP" 
+                                        value={cep} 
+                                        onChange={(e) => setCep(e.target.value)} 
+                                        className="flex-1 p-2 border border-stone-300 rounded-lg text-sm focus:border-green-500 outline-none" 
+                                        maxLength={9} 
+                                    />
+                                    <button 
+                                        onClick={calculateShipping} 
+                                        disabled={calculatingShipping}
+                                        className="bg-stone-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-stone-700 disabled:opacity-50"
+                                    >
+                                        {calculatingShipping ? <Loader2 size={14} className="animate-spin" /> : "OK"}
+                                    </button>
                                 </div>
-                                {shippingCost > 0 && <p className="text-sm text-green-700 mt-2 font-medium">Frete: R$ {shippingCost.toFixed(2)}</p>}
+
+                                {/* Lista de Fretes com Scroll Próprio se crescer muito */}
+                                {shippingOptions.length > 0 && (
+                                    <div className="space-y-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+                                        {shippingOptions.map((opt) => (
+                                            <div key={opt.id} onClick={() => setSelectedShipping(opt)} className={`flex justify-between items-center p-2 rounded border text-xs cursor-pointer transition-colors ${selectedShipping?.id === opt.id ? 'border-green-500 bg-green-50' : 'border-stone-100 hover:bg-stone-50'}`}>
+                                                <div><p className="font-bold text-stone-800 flex items-center gap-1">{opt.company === 'Correios' ? <Box size={12}/> : <Truck size={12}/>} {opt.name}</p><p className="text-[10px] text-stone-500">{opt.delivery_time} dias úteis</p></div>
+                                                <p className="font-bold text-green-700">R$ {opt.price.toFixed(2)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
+                        {deliveryMode === 'pickup' && <p className="text-xs text-center text-stone-500 mt-1">Loja Bacacheri - Grátis</p>}
                     </div>
 
-                    <div className="flex justify-between items-center"><span className="text-stone-500">Subtotal</span><span className="text-stone-900">R$ {cartTotal.toFixed(2)}</span></div>
-                    {deliveryMethod === 'entrega' && shippingCost > 0 && <div className="flex justify-between items-center text-sm"><span className="text-stone-500">Frete</span><span className="text-stone-900">+ R$ {shippingCost.toFixed(2)}</span></div>}
-                    <div className="flex justify-between items-center border-t border-stone-200 pt-3"><span className="text-lg font-bold text-stone-800">Total</span><span className="text-xl font-bold text-green-800">R$ {finalTotal.toFixed(2)}</span></div>
+                    {/* TOTAIS */}
+                    <div className="space-y-1">
+                        <div className="flex justify-between items-center text-sm text-stone-500">
+                            <span>Subtotal</span>
+                            <span>R$ {cartTotal.toFixed(2)}</span>
+                        </div>
+                        {deliveryMode === 'shipping' && selectedShipping && (
+                            <div className="flex justify-between items-center text-sm text-stone-500">
+                                <span>Frete</span>
+                                <span>+ R$ {Number(selectedShipping.price).toFixed(2)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between items-center border-t border-stone-200 pt-3 mt-2">
+                            <span className="text-lg font-bold text-stone-800">Total</span>
+                            <span className="text-2xl font-bold text-green-800">R$ {finalTotal.toFixed(2)}</span>
+                        </div>
+                    </div>
 
                     {paymentLink ? (
-                        <a href={paymentLink} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-lg animate-pulse"><ExternalLink size={20} /> Pagar Agora</a>
+                        <a href={paymentLink} className="block w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all text-center shadow-lg hover:shadow-blue-500/30 animate-pulse">
+                            Pagar Agora <ExternalLink size={16} className="inline ml-1 mb-1"/>
+                        </a>
                     ) : (
-                        <button onClick={handleCheckout} disabled={cart.length === 0 || isProcessing} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 disabled:bg-stone-300 transition-colors flex items-center justify-center gap-2 shadow-lg active:scale-95">{isProcessing ? <><Loader2 size={20} className="animate-spin" /> Processando... </> : <><CreditCard size={20} /> Finalizar Compra </>}</button>
+                        <button 
+                            onClick={handleCheckout} 
+                            disabled={cart.length === 0 || isProcessing} 
+                            className="w-full bg-stone-900 text-white py-4 rounded-xl font-bold hover:bg-green-800 disabled:bg-stone-300 transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <CreditCard size={20} />}
+                            {isProcessing ? "Processando..." : "Finalizar Compra"}
+                        </button>
                     )}
                 </div>
             </div>

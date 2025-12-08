@@ -2,6 +2,35 @@
 
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
+import { MeasurementType } from '@/lib/types';
+
+// ... (código existente de User, Profile, Order mantido)
+
+// --- FUNÇÃO DE BUSCA DE DADOS PARA A HOME ---
+export async function getCategoriesAndProducts() {
+  const categories = await prisma.category.findMany({ orderBy: { name: 'asc' } });
+  const productsRaw = await prisma.product.findMany();
+
+  // Converte Decimal para Number para o Frontend não reclamar
+  const products = productsRaw.map(p => ({
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    price: Number(p.price),
+    priceUpholsterer: p.priceUpholsterer ? Number(p.priceUpholsterer) : null,
+    stock: Number(p.stock),
+    type: p.type as MeasurementType,
+    image: p.image,
+    colors: p.colors as any,
+    pdfUrl: p.pdfUrl
+  }));
+
+  return { categories, products };
+}
+
+// ... (restante das funções createProduct, createOrder, etc. mantidas)
+// Vou recolocar o conteúdo completo do actions.ts aqui para garantir que nada se perca, 
+// adicionando a nova função e mantendo as anteriores.
 
 // --- USUÁRIOS (COM ENDEREÇO) ---
 
@@ -60,13 +89,11 @@ export async function createOrder(
     itemsTotal: number, 
     customerName: string, 
     userId?: string,
-    // Novos parâmetros de entrega
     shippingCost: number = 0,
     deliveryMethod: string = 'retirada_loja'
 ) {
     let shippingData = {};
 
-    // Busca endereço do usuário para gravar no pedido
     if (userId) {
         const profile = await prisma.profile.findUnique({ where: { userId } });
         if (profile) {
@@ -82,7 +109,6 @@ export async function createOrder(
         }
     }
 
-    // Calcula total final (Produtos + Frete)
     const finalTotal = itemsTotal + shippingCost;
 
     const order = await prisma.order.create({
@@ -93,7 +119,7 @@ export async function createOrder(
             status: "pendente",
             shippingCost: shippingCost,
             deliveryMethod: deliveryMethod,
-            ...shippingData, // Grava o endereço
+            ...shippingData,
             items: {
                 create: cartItems.map(item => ({
                     productName: item.name,
@@ -144,10 +170,7 @@ export async function createProduct(formData: FormData) {
     const stock = parseFloat(formData.get('stock') as string);
     const categoryId = formData.get('category') as string;
     const image = formData.get('image') as string;
-    
-    // Pega a URL do PDF
     const pdfUrl = formData.get('pdfUrl') as string;
-
     const colorsRaw = formData.get('colorsJson') as string;
     const colors = colorsRaw ? JSON.parse(colorsRaw) : [];
 
@@ -164,7 +187,7 @@ export async function createProduct(formData: FormData) {
             type: category.type,
             image,
             colors,
-            pdfUrl: pdfUrl || null // Salva no banco
+            pdfUrl: pdfUrl || null
         },
     });
 

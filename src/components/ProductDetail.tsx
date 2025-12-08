@@ -12,7 +12,8 @@ export default function ProductDetail({ product }: { product: any }) {
     const { profile } = useAuth(); 
 
     const [selectedColor, setSelectedColor] = useState(product.colors[0] || { name: 'Padrão', hex: '#FFF' });
-    const [quantity, setQuantity] = useState(product.type === 'meter' ? 1.0 : 1);
+    // Inicia com 0.5 se for metro, ou 1 se for unidade
+    const [quantity, setQuantity] = useState(product.type === 'meter' ? 0.5 : 1);
     const [currentImage, setCurrentImage] = useState(product.image);
 
     const isUpholsterer = profile?.role === 'upholsterer' && (profile as any)?.approved;
@@ -25,13 +26,25 @@ export default function ProductDetail({ product }: { product: any }) {
 
     const handleQtyChange = (val: number) => {
         let newQty = val;
-        if (product.type === 'unit') newQty = Math.max(1, Math.floor(newQty));
-        else newQty = Math.max(0.1, newQty);
+        
+        if (product.type === 'unit') {
+            // Unidade: Mínimo 1, passos de 1
+            newQty = Math.max(1, Math.floor(newQty));
+        } else {
+            // Metro: Mínimo 0.5, passos de 0.5 (arredonda para o 0.5 mais próximo para evitar quebrados como 0.7)
+            newQty = Math.max(0.5, Math.round(newQty * 2) / 2);
+        }
+
+        // Trava no estoque máximo
         if (newQty > Number(product.stock)) newQty = Number(product.stock);
-        setQuantity(parseFloat(newQty.toFixed(1)));
+        
+        setQuantity(newQty);
     };
 
     const subtotal = quantity * finalPrice;
+
+    // Define o passo de incremento (0.5 para metro, 1 para unidade)
+    const step = product.type === 'meter' ? 0.5 : 1;
 
     return (
         <div className="max-w-7xl mx-auto px-6 py-8 animate-fade-in">
@@ -40,7 +53,6 @@ export default function ProductDetail({ product }: { product: any }) {
             </button>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-12 lg:gap-16">
-                {/* FOTO */}
                 <div className="bg-stone-100 rounded-2xl overflow-hidden h-[400px] md:h-[600px] relative shadow-inner group">
                     <img src={currentImage} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     {isUpholsterer && product.priceUpholsterer && (
@@ -50,12 +62,9 @@ export default function ProductDetail({ product }: { product: any }) {
                     )}
                 </div>
 
-                {/* DETALHES */}
                 <div className="flex flex-col justify-center">
                     <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
                         <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">{product.category}</span>
-                        
-                        {/* --- BOTÃO DE PDF --- */}
                         {product.pdfUrl && (
                             <a 
                                 href={product.pdfUrl} 
@@ -105,11 +114,15 @@ export default function ProductDetail({ product }: { product: any }) {
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="flex items-center border border-stone-300 rounded-xl bg-white shadow-sm h-12">
-                                <button onClick={() => handleQtyChange(quantity - (product.type === 'meter' ? 0.1 : 1))} className="px-4 h-full hover:bg-stone-100 text-stone-600 rounded-l-xl"><Minus size={18} /></button>
+                                <button onClick={() => handleQtyChange(quantity - step)} className="px-4 h-full hover:bg-stone-100 text-stone-600 rounded-l-xl transition-colors"><Minus size={18} /></button>
                                 <input type="number" value={quantity} readOnly className="w-20 text-center border-none focus:ring-0 font-bold text-xl h-full bg-transparent text-stone-900" />
-                                <button onClick={() => handleQtyChange(quantity + (product.type === 'meter' ? 0.1 : 1))} className="px-4 h-full hover:bg-stone-100 text-stone-600 rounded-r-xl"><Plus size={18} /></button>
+                                <button onClick={() => handleQtyChange(quantity + step)} className="px-4 h-full hover:bg-stone-100 text-stone-600 rounded-r-xl transition-colors"><Plus size={18} /></button>
                             </div>
-                            <div className="text-xs text-stone-500 leading-tight max-w-[150px]">{product.type === 'meter' ? 'Corte mínimo de 0.10m.' : 'Venda unitária.'}</div>
+                            <div className="text-xs text-stone-500 leading-tight max-w-[150px]">
+                                {product.type === 'meter' 
+                                    ? 'Corte mínimo de 0.50m. Adicione de 0.5 em 0.5m.' 
+                                    : 'Venda unitária fechada.'}
+                            </div>
                         </div>
                     </div>
 

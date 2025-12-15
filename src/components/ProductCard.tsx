@@ -8,7 +8,6 @@ import Link from 'next/link';
 
 export default function ProductCard({ product }: { product: Product }) {
     const { addToCart } = useCart();
-    // Inicializa com 0.5 se for metro
     const [qty, setQty] = useState(product.type === 'meter' ? 0.5 : 1);
     const [selectedColor, setSelectedColor] = useState(product.colors[0]);
 
@@ -17,7 +16,6 @@ export default function ProductCard({ product }: { product: Product }) {
         if (product.type === 'unit') {
             newQty = Math.max(1, Math.floor(newQty));
         } else {
-            // Metro: mínimo 0.5, passos de 0.5
             newQty = Math.max(0.5, Math.round(newQty * 2) / 2);
         }
         setQty(newQty);

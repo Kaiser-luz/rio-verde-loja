@@ -3,20 +3,19 @@
 @tailwind utilities;
 
 /* --- BARRA DE ROLAGEM PERSONALIZADA --- */
-/* Funciona no Chrome, Edge, Safari e Opera */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 8px; /* Largura da barra */
+  width: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #f5f5f4; /* Cor do fundo (stone-100) */
+  background: #f5f5f4; 
   border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #a8a29e; /* Cor da barra (stone-400) */
+  background-color: #a8a29e; 
   border-radius: 4px;
-  border: 2px solid #f5f5f4; /* Borda para dar efeito de espaçamento */
+  border: 2px solid #f5f5f4; 
 }
 
 /* Firefox */

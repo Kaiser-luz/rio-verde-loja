@@ -28,8 +28,13 @@ model Product {
   image            String   
   colors           Json     
   
-  // NOVO: Link para o PDF do Monstruário
+  // Link para o PDF do Monstruário
   pdfUrl           String?  
+
+  // Informações Técnicas para Frete
+  width            Decimal? @db.Decimal(10, 2) // Largura em cm
+  weight           Decimal? @db.Decimal(10, 3) // Peso em kg
+  composition      String?
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -47,7 +52,7 @@ model Profile {
   cnpj      String?  
   approved  Boolean  @default(false)
 
-  // --- ENDEREÇO PADRÃO ---
+  // Endereço Padrão
   zipCode     String? 
   street      String? 
   number      String? 
@@ -67,11 +72,11 @@ model Order {
   total       Decimal     @db.Decimal(10, 2)
   status      String      @default("pendente")
   
-  // --- LOGÍSTICA ---
-  deliveryMethod      String? // 'retirada_loja' ou 'entrega'
-  shippingCost        Decimal? @db.Decimal(10, 2) // Valor do Frete
+  // Logística
+  deliveryMethod      String? 
+  shippingCost        Decimal? @db.Decimal(10, 2)
 
-  // Snapshot do endereço de entrega no momento da compra
+  // Endereço de Entrega (Snapshot)
   shippingZipCode     String?
   shippingStreet      String?
   shippingNumber      String?

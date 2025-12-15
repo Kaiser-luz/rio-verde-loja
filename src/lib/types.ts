@@ -16,8 +16,12 @@ export interface Product {
     type: MeasurementType;
     image: string;
     colors: ProductColor[];
-    // Campo opcional para o PDF
+    
+    // Novos Campos
     pdfUrl?: string | null;
+    width?: number | null;
+    weight?: number | null;
+    composition?: string | null;
 }
 
 export interface CartItem extends Product {

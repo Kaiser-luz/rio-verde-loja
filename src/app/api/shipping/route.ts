@@ -1,120 +1,124 @@
 import { NextResponse } from 'next/server';
 
-// Token do Melhor Envio (Sandbox/Teste).
-const TOKEN = process.env.MELHOR_ENVIO_TOKEN || ""; 
-const EMAIL = process.env.MELHOR_ENVIO_EMAIL || "email@loja.com";
-
-// CEP de Origem (Sua loja em Curitiba - Bacacheri)
-const FROM_CEP = "82510000"; 
+// CEP DA LOJA (Bacacheri)
+const ORIGIN_CEP = 82515000; 
 
 export async function POST(request: Request) {
     try {
         const body = await request.json();
         const { cep, items } = body;
 
-        // Log para debug no terminal
-        console.log(`🚚 Calculando frete para CEP: ${cep}`);
+        // Limpa o CEP
+        const cleanCep = cep.replace(/\D/g, '');
+        const destinationCepNum = parseInt(cleanCep);
 
-        if (!cep || cep.length < 8) {
+        if (cleanCep.length !== 8) {
             return NextResponse.json({ error: "CEP inválido" }, { status: 400 });
         }
 
-        // Se não tiver token configurado, já usa o fallback direto para não perder tempo
-        if (!TOKEN) {
-            console.warn("⚠️ Token do Melhor Envio não configurado. Usando valores de teste.");
-            return NextResponse.json(getFallbackShipping());
-        }
+        // --- 1. ANÁLISE DO CARRINHO (Peso/Volume) ---
+        let totalMeters = 0;
+        let totalUnits = 0;
 
-        const products = items.map((item: any) => ({
-            id: String(item.id),
-            width: 20,
-            height: 20,
-            length: 20,
-            weight: item.type === 'meter' ? (item.quantity * 0.5) : (item.quantity * 1),
-            insurance_value: Number(item.price),
-            quantity: Math.max(1, Math.ceil(item.quantity))
-        }));
-
-        const isProduction = process.env.NODE_ENV === 'production';
-        const url = isProduction 
-            ? 'https://melhorenvio.com.br/api/v2/me/shipment/calculate' 
-            : 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate';
-
-        const payload = {
-            from: { postal_code: FROM_CEP },
-            to: { postal_code: cep },
-            products: products,
-            options: { receipt: false, own_hand: false }
-        };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${TOKEN}`,
-                'User-Agent': `${EMAIL}`
-            },
-            body: JSON.stringify(payload)
+        items.forEach((item: any) => {
+            const qty = Number(item.quantity);
+            if (item.type === 'meter') {
+                totalMeters += qty;
+            } else {
+                totalUnits += qty;
+            }
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("❌ Erro API Melhor Envio:", response.status, errorText);
-            // Retorna o fallback em vez de erro para não travar o cliente
-            return NextResponse.json(getFallbackShipping());
+        // Regra de Negócio: Carro vs Moto
+        const isHeavyLoad = totalMeters > 10 || totalUnits > 5;
+
+        // --- 2. VERIFICAÇÃO DE REGIÃO (CURITIBA E RMC) ---
+        // Faixas de CEP: 80xxx a 83xxx geralmente cobrem Curitiba e região metropolitana
+        const isLocal = destinationCepNum >= 80000000 && destinationCepNum <= 83800000;
+
+        let shippingOptions = [];
+
+        if (isLocal) {
+            // --- CÁLCULO LOCAL (Simulação de KM) ---
+            
+            // Diferença simples entre CEPs para variar o preço (heurística)
+            // Divide por 10000 para ter um número pequeno (ex: diferença de bairros)
+            const diff = Math.abs(destinationCepNum - ORIGIN_CEP);
+            // Alterado para R$ 0,10
+            const variation = Math.ceil(diff / 5000) * 0.10; // Varia R$ 0,10 a cada "zona" imaginária
+
+            if (isHeavyLoad) {
+                // FRETE DE CARRO
+                const basePriceCar = 25.00; // Alterado para 25
+                const finalPrice = basePriceCar + variation;
+                
+                shippingOptions.push({
+                    id: 'local-car',
+                    name: "Entrega Expressa (Carro)",
+                    price: finalPrice,
+                    delivery_time: 1,
+                    company: { name: "Logística Própria" }
+                });
+            } else {
+                // FRETE DE MOTO
+                const basePriceMoto = 12.00; // Alterado para 12
+                const finalPrice = basePriceMoto + variation;
+
+                shippingOptions.push({
+                    id: 'local-moto',
+                    name: "Entrega Expressa (Moto)",
+                    price: finalPrice,
+                    delivery_time: 1,
+                    company: { name: "Logística Própria" }
+                });
+            }
+
+            // Opção de Retirada sempre disponível para locais
+            shippingOptions.push({
+                id: 'pickup',
+                name: "Retirada na Loja (Bacacheri)",
+                price: 0.00,
+                delivery_time: 0,
+                company: { name: "Loja Física" }
+            });
+
+        } else {
+            // --- CÁLCULO NACIONAL (Simulado PAC/SEDEX) ---
+            // Para fora de Curitiba, usamos uma estimativa baseada em "distância" do CEP
+            
+            // Simulação simples: quanto maior o CEP, mais longe (grosseiramente)
+            const distanceFactor = Math.abs(destinationCepNum - ORIGIN_CEP) / 10000000; 
+            
+            const weightMultiplier = isHeavyLoad ? 2.5 : 1; // Se for pesado, frete multiplica
+
+            const pacPrice = (25.00 + (distanceFactor * 10)) * weightMultiplier;
+            const sedexPrice = (45.00 + (distanceFactor * 15)) * weightMultiplier;
+
+            shippingOptions.push(
+                { 
+                    id: 'correios-pac', 
+                    name: "PAC (Estimado)", 
+                    price: parseFloat(pacPrice.toFixed(2)), 
+                    delivery_time: 7 + Math.floor(distanceFactor), 
+                    company: { name: "Correios" } 
+                },
+                { 
+                    id: 'correios-sedex', 
+                    name: "SEDEX (Estimado)", 
+                    price: parseFloat(sedexPrice.toFixed(2)), 
+                    delivery_time: 3 + Math.floor(distanceFactor), 
+                    company: { name: "Correios" } 
+                }
+            );
         }
 
-        const data = await response.json();
+        // Ordena pelo preço
+        shippingOptions.sort((a, b) => a.price - b.price);
 
-        const options = data
-            .filter((opt: any) => !opt.error)
-            .map((opt: any) => ({
-                id: opt.id,
-                name: opt.name, 
-                company: opt.company.name, 
-                price: Number(opt.price), 
-                delivery_time: opt.delivery_time 
-            }))
-            .sort((a: any, b: any) => a.price - b.price);
-
-        // Se a API retornou lista vazia (nenhuma transportadora atende), usa fallback
-        if (options.length === 0) {
-             return NextResponse.json(getFallbackShipping());
-        }
-
-        return NextResponse.json(options);
+        return NextResponse.json(shippingOptions);
 
     } catch (error: any) {
-        console.error("❌ Erro interno cálculo frete:", error);
-        // Em último caso, retorna fallback
-        return NextResponse.json(getFallbackShipping());
+        console.error("Erro no cálculo simulado:", error);
+        return NextResponse.json({ error: "Erro interno no cálculo." }, { status: 500 });
     }
-}
-
-// Função auxiliar com valores fictícios para teste/erro
-function getFallbackShipping() {
-    return [
-        { 
-            id: 1, 
-            name: "PAC (Estimado)", 
-            price: 28.90, 
-            delivery_time: 7, 
-            company: "Correios" 
-        },
-        { 
-            id: 2, 
-            name: "SEDEX (Estimado)", 
-            price: 45.50, 
-            delivery_time: 3, 
-            company: "Correios" 
-        },
-        { 
-            id: 3, 
-            name: "Transportadora", 
-            price: 35.00, 
-            delivery_time: 5, 
-            company: "Jadlog" 
-        }
-    ];
 }

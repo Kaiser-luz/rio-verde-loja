@@ -1,11 +1,11 @@
-'use client'; // Adicionado para permitir interatividade (onClick, scroll)
+'use client'; 
 
 import { useState, useEffect } from 'react';
 import HeroCarousel from '@/components/HeroCarousel';
 import ProductCard from '@/components/ProductCard';
-import { getCategoriesAndProducts } from './actions'; // Importa a Server Action (vamos criar/ajustar isso)
-import { Product, Category } from '@/lib/types'; // Importa os tipos
-import { ArrowDown, Hash } from 'lucide-react';
+import { getCategoriesAndProducts } from './actions'; 
+import { Product, Category } from '@/lib/types';
+import { Hash } from 'lucide-react';
 
 export default function Home() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -13,8 +13,6 @@ export default function Home() {
   const [activeCategory, setActiveCategory] = useState<string>('');
 
   useEffect(() => {
-    // Carrega dados no cliente (ou poderia ser via props se fosse Server Component puro, 
-    // mas precisamos de interatividade aqui para o menu "sticky" funcionar bem)
     const loadData = async () => {
         const data = await getCategoriesAndProducts();
         setCategories(data.categories);
@@ -38,7 +36,6 @@ export default function Home() {
     <div className="max-w-7xl mx-auto px-6 py-8">
       <HeroCarousel />
 
-      {/* NAVEGAÇÃO DE CATEGORIAS (Sticky) */}
       <div className="sticky top-20 z-30 bg-white/95 backdrop-blur py-4 mb-8 border-b border-stone-100 overflow-x-auto scrollbar-hide">
         <div className="flex gap-3">
             {categories.map(cat => (
@@ -57,7 +54,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* LISTA DE PRODUTOS POR CATEGORIA */}
       {categories.map(cat => {
         const catProducts = products.filter(p => p.category === cat.id);
         if (catProducts.length === 0) return null;

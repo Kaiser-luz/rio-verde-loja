@@ -19,7 +19,6 @@ export default function SignupPage() {
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    // Busca CEP automaticamente
     const handleBlurCep = async () => {
         const cleanCep = formData.zipCode.replace(/\D/g, '');
         if (cleanCep.length >= 8) {
@@ -60,7 +59,6 @@ export default function SignupPage() {
                 userId: authData.user.id,
                 name: formData.name, email: formData.email, cpf: formData.cpf, phone: formData.phone,
                 role: formData.role, cnpj: formData.role === 'upholsterer' ? formData.cnpj : undefined,
-                // Endereço
                 zipCode: formData.zipCode, street: formData.street, number: formData.number,
                 complement: formData.complement, district: formData.district, city: formData.city, state: formData.state
             });

@@ -41,15 +41,12 @@ export async function POST(request: Request) {
         if (isLocal) {
             // --- CÁLCULO LOCAL (Simulação de KM) ---
             
-            // Diferença simples entre CEPs para variar o preço (heurística)
-            // Divide por 10000 para ter um número pequeno (ex: diferença de bairros)
             const diff = Math.abs(destinationCepNum - ORIGIN_CEP);
-            // Alterado para R$ 0,10
-            const variation = Math.ceil(diff / 5000) * 0.10; // Varia R$ 0,10 a cada "zona" imaginária
+            const variation = Math.ceil(diff / 5000) * 0.10; 
 
             if (isHeavyLoad) {
                 // FRETE DE CARRO
-                const basePriceCar = 25.00; // Alterado para 25
+                const basePriceCar = 25.00; 
                 const finalPrice = basePriceCar + variation;
                 
                 shippingOptions.push({
@@ -61,7 +58,7 @@ export async function POST(request: Request) {
                 });
             } else {
                 // FRETE DE MOTO
-                const basePriceMoto = 12.00; // Alterado para 12
+                const basePriceMoto = 12.00; 
                 const finalPrice = basePriceMoto + variation;
 
                 shippingOptions.push({
@@ -83,36 +80,20 @@ export async function POST(request: Request) {
             });
 
         } else {
-            // --- CÁLCULO NACIONAL (Simulado PAC/SEDEX) ---
-            // Para fora de Curitiba, usamos uma estimativa baseada em "distância" do CEP
+            // --- CÁLCULO NACIONAL (DIRECIONAR PARA WHATSAPP) ---
+            // Para fora de Curitiba, retornamos uma opção especial que o frontend vai tratar diferente
             
-            // Simulação simples: quanto maior o CEP, mais longe (grosseiramente)
-            const distanceFactor = Math.abs(destinationCepNum - ORIGIN_CEP) / 10000000; 
-            
-            const weightMultiplier = isHeavyLoad ? 2.5 : 1; // Se for pesado, frete multiplica
-
-            const pacPrice = (25.00 + (distanceFactor * 10)) * weightMultiplier;
-            const sedexPrice = (45.00 + (distanceFactor * 15)) * weightMultiplier;
-
-            shippingOptions.push(
-                { 
-                    id: 'correios-pac', 
-                    name: "PAC (Estimado)", 
-                    price: parseFloat(pacPrice.toFixed(2)), 
-                    delivery_time: 7 + Math.floor(distanceFactor), 
-                    company: { name: "Correios" } 
-                },
-                { 
-                    id: 'correios-sedex', 
-                    name: "SEDEX (Estimado)", 
-                    price: parseFloat(sedexPrice.toFixed(2)), 
-                    delivery_time: 3 + Math.floor(distanceFactor), 
-                    company: { name: "Correios" } 
-                }
-            );
+            shippingOptions.push({
+                id: 'whatsapp-quote', 
+                name: "Frete a Combinar (WhatsApp)", 
+                price: 0.00, // Preço zero pois será combinado
+                delivery_time: 0, // Indefinido
+                company: { name: "Transportadora" },
+                isQuote: true // Flag especial para o frontend saber
+            });
         }
 
-        // Ordena pelo preço
+        // Ordena pelo preço (embora aqui tenhamos poucas opções)
         shippingOptions.sort((a, b) => a.price - b.price);
 
         return NextResponse.json(shippingOptions);

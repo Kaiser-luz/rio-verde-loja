@@ -8,13 +8,20 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { orderId } = body;
-    if (!orderId) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
 
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
+    const order = await prisma.order.findUnique({ 
+        where: { id: orderId }, 
+        include: { items: true } 
+    });
+    
     if (!order) return NextResponse.json({ error: "Pedido não encontrado" }, { status: 404 });
 
+    // DADOS DO CLIENTE
+    // Se tiver perfil, usa. Se não, usa os dados do pedido (se salvamos) ou genérico.
     let customerData = {
-        name: "Visitante", email: "cliente@loja.com", tax_id: "00000000000",
+        name: "Cliente Visitante", 
+        email: "cliente@loja.com", 
+        tax_id: "00000000000",
         phones: [{ country: "55", area: "41", number: "999999999", type: "MOBILE" }]
     };
 
@@ -26,22 +33,44 @@ export async function POST(request: Request) {
             if (cleanPhone.length < 10) cleanPhone = "41999999999";
             
             customerData = {
-                name: profile.name, email: profile.email, tax_id: cleanCPF,
+                name: profile.name, 
+                email: profile.email, 
+                tax_id: cleanCPF,
                 phones: [{ country: "55", area: cleanPhone.substring(0, 2), number: cleanPhone.substring(2), type: "MOBILE" }]
             };
         }
     }
 
-    const items = order.items.map(item => ({
-      reference_id: item.id,
-      name: item.productName,
-      quantity: Math.max(1, Math.floor(Number(item.quantity))),
-      unit_amount: Math.round(Number(item.price) * 100),
-    }));
+    // --- CORREÇÃO PARA PAGSEGURO (Inteiros) ---
+    const items = order.items.map(item => {
+        const qty = Number(item.quantity);
+        const price = Number(item.price);
+        
+        // Se for fração (ex: 1.5 metros), transformamos em 1 unidade com valor total
+        // Se for inteiro (ex: 2 tesouras), mandamos normal
+        const isFraction = qty % 1 !== 0;
 
+        if (isFraction) {
+            return {
+                reference_id: item.id,
+                name: `${item.productName} (${qty}m)`, // Ex: "Linho (2.5m)"
+                quantity: 1, // Sempre inteiro
+                unit_amount: Math.round((price * qty) * 100), // Valor total do item em centavos
+            };
+        } else {
+            return {
+                reference_id: item.id,
+                name: item.productName,
+                quantity: qty,
+                unit_amount: Math.round(price * 100), // Valor unitário em centavos
+            };
+        }
+    });
+
+    // Frete
     if (Number(order.shippingCost) > 0) {
         items.push({
-            reference_id: "SHIPPING_COST",
+            reference_id: "SHIPPING",
             name: "Frete / Entrega",
             quantity: 1,
             unit_amount: Math.round(Number(order.shippingCost) * 100)
@@ -74,7 +103,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
         const errorMsg = data.error_messages?.[0]?.description || data.message || "Erro desconhecido";
-        return NextResponse.json({ error: `PagSeguro recusou: ${errorMsg}` }, { status: 500 });
+        return NextResponse.json({ error: `PagSeguro: ${errorMsg}` }, { status: 500 });
     }
 
     const paymentLink = data.links.find((link: any) => link.rel === 'PAY')?.href;

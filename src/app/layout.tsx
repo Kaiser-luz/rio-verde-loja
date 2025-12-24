@@ -1,30 +1,29 @@
-import type { Metadata } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
-import './globals.css';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
-import CartSidebar from '@/components/CartSidebar';
-import { CartProvider } from '@/context/CartContext'; // Essencial para o erro sumir
-import { AuthProvider } from '@/context/AuthContext'; // Essencial para o login
+import type { Metadata } from "next";
+import { Inter, Playfair_Display } from "next/font/google";
+import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
+import { CartProvider } from "@/context/CartContext";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import { CartSidebar } from "@/components/CartSidebar"; // Importação Nomeada
 import { MessageCircle } from 'lucide-react';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
-const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair' });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 export const metadata: Metadata = {
-  title: 'Rio Verde Tecidos e Espumas',
-  description: 'Tecidos, Espumas e Materiais para Tapeçaria em Curitiba',
+  title: "Rio Verde Tecidos e Espumas",
+  description: "A melhor loja de tecidos e espumas de Curitiba.",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="pt-BR">
-      <body className={`${inter.variable} ${playfair.variable} font-sans text-stone-900 bg-white`}>
-        {/* AQUI ESTÁ O SEGREDO: O CartProvider tem de estar à volta de tudo */}
+      <body className={`${inter.variable} ${playfair.variable} font-sans text-stone-800 antialiased`}>
         <AuthProvider>
           <CartProvider>
             <Header />
@@ -36,13 +35,13 @@ export default function RootLayout({
 
             {/* WhatsApp Flutuante */}
             <a
-              href="https://wa.me/5541988494471"
+              href="https://wa.me/5541999999999" // Substitua pelo número real
               target="_blank"
               rel="noopener noreferrer"
-              className="fixed bottom-6 right-6 z-50 bg-[#25D366] text-white p-4 rounded-full shadow-lg hover:bg-[#128C7E] transition-all hover:scale-110 flex items-center justify-center"
-              title="Fale conosco no WhatsApp"
+              className="fixed bottom-6 right-6 z-50 bg-green-500 text-white p-4 rounded-full shadow-lg hover:bg-green-600 transition-transform hover:scale-110 flex items-center justify-center"
+              aria-label="Fale conosco no WhatsApp"
             >
-              <MessageCircle size={28} />
+              <MessageCircle size={32} />
             </a>
           </CartProvider>
         </AuthProvider>

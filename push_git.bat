@@ -1,33 +1,58 @@
 @echo off
-echo 🔧 Corrigindo dependencias do React e Next.js...
+echo ===================================================
+echo 🚀 INICIANDO PROCESSO DE ATUALIZAÇÃO E ENVIO GIT
+echo ===================================================
 
-:: 1. Remove instalações antigas (equivalente a rm -rf)
+echo.
+echo 🧹 1. Limpando instalacoes antigas para evitar conflitos...
 if exist node_modules (
     rmdir /s /q node_modules
+    echo    - Pasta node_modules removida.
 )
 if exist package-lock.json (
     del /f /q package-lock.json
+    echo    - Arquivo package-lock.json removido.
 )
 
-:: 2. Instala versoes compativeis e seguras
-:: Atualiza para Next.js 15.1.7 (corrige vulnerabilidade) e React 19 RC compativel
-echo 📦 Instalando dependencias corretas...
+echo.
+echo 📦 2. Instalando dependencias seguras (Next 15.1.7 + React 19 RC)...
+echo    Isso pode demorar alguns minutos. Por favor, aguarde.
 call npm install react@19.0.0-rc-66855b96-20241106 react-dom@19.0.0-rc-66855b96-20241106 next@15.1.7
+if %errorlevel% neq 0 (
+    echo ❌ Erro ao instalar dependencias principais. Tentando instalacao forçada...
+    call npm install --force
+)
 
-:: 3. Instala o resto das dependencias
+echo.
+echo 📥 3. Instalando restante das dependencias...
 call npm install
+if %errorlevel% neq 0 (
+    echo ⚠️ Aviso: Houve algum problema na instalacao geral, mas vamos prosseguir.
+)
 
-echo 🔄 Sincronizando Prisma...
+echo.
+echo 🔄 4. Gerando cliente do Prisma (Sincronizando Banco de Dados)...
 call npx prisma generate
+if %errorlevel% neq 0 (
+    echo ❌ Erro ao gerar Prisma Client. Verifique seu schema.prisma.
+    pause
+    exit /b
+)
 
-echo 📦 Adicionando arquivos ao Git...
+echo.
+echo 💾 5. Preparando arquivos para o Git...
 git add .
 
-echo 📝 Criando commit...
-git commit -m "Fix: PROdutos vulnerabilidades nas dependencias do React e Next.js"
+echo.
+echo 📝 6. Criando commit...
+git commit -m "Feat: Checkout completo com Frete, PDF, Endereco e Layout final"
 
-echo 🚀 Enviando para o GitHub...
+echo.
+echo ⬆️ 7. Enviando para o GitHub...
 git push
 
-echo ✅ Sucesso! Tudo salvo na nuvem.
+echo.
+echo ===================================================
+echo ✅ SUCESSO! Tudo atualizado e salvo na nuvem.
+echo ===================================================
 pause
